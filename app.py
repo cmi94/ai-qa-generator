@@ -15,6 +15,8 @@ CORS(app)
 PORT         = int(os.getenv('FLASK_PORT', 5000))
 PROMPTS_DIR  = Path('prompts')
 PROJECTS_DIR = Path('projects')
+PROMPTS_DIR.mkdir(exist_ok=True)
+PROJECTS_DIR.mkdir(exist_ok=True)
 
 # ── 정적 파일 (index.html) ──
 @app.route('/')
