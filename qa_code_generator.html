@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI QA Code Generator — LIMSpro</title>
+<style>
+:root {
+  --bg:#fff;--bg2:#f7f7f5;--bg3:#f0efe9;
+  --text:#1a1a1a;--text2:#6b6b6b;--text3:#aaa;
+  --border:rgba(0,0,0,0.13);--border2:rgba(0,0,0,0.24);
+  --r:8px;--r-lg:12px;
+  --amber-bg:#FAEEDA;--amber-text:#854F0B;--amber-tag:#FAC775;--amber-dark:#633806;
+  --blue-bg:#E6F1FB;--blue-text:#185FA5;
+  --green-bg:#EAF3DE;--green-text:#3B6D11;
+  --red-bg:#FCEBEB;--red-text:#A32D2D;--red-b:#F7C1C1;
+  --ok-bg:#EAF3DE;--ok-text:#3B6D11;
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1e1e1c;--bg2:#27272a;--bg3:#2c2c2e;
+    --text:#e8e8e2;--text2:#9a9a94;--text3:#555;
+    --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.22);
+    --amber-bg:#2e2010;--amber-text:#FAC775;--amber-tag:#3d2b12;--amber-dark:#FAC775;
+    --blue-bg:#0c2040;--blue-text:#85B7EB;
+    --green-bg:#132210;--green-text:#97C459;
+    --red-bg:#2a1212;--red-text:#F09595;--red-b:#5a2020;
+    --ok-bg:#132210;--ok-text:#97C459;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg3);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── NAV ── */
+nav{display:flex;align-items:center;gap:0;border-bottom:0.5px solid var(--border);background:var(--bg);padding:0 16px;flex-shrink:0;}
+.nav-title{font-size:13px;font-weight:500;color:var(--text);padding:12px 0;margin-right:16px;white-space:nowrap;}
+.nav-title span{font-size:11px;font-weight:400;color:var(--text2);margin-left:6px;}
+.nav-tab{padding:12px 14px;font-size:13px;color:var(--text2);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;font-family:inherit;white-space:nowrap;}
+.nav-tab.on{color:var(--text);border-bottom:2px solid var(--text);font-weight:500;}
+.nav-spacer{flex:1;}
+.api-pill{display:flex;align-items:center;gap:6px;padding:5px 10px;border:0.5px solid var(--border2);border-radius:99px;font-size:11px;cursor:pointer;background:none;color:var(--text2);}
+.api-pill.ok{border-color:#3B6D11;color:var(--ok-text);}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+/* ── PAGES ── */
+.page{display:none;flex:1;overflow:hidden;}
+.page.on{display:flex;}
+
+/* ── GENERATOR PAGE ── */
+#pg-gen{flex-direction:row;}
+.sidebar{width:272px;min-width:240px;background:var(--bg);border-right:0.5px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg);}
+
+.form-block{padding:14px 16px;display:flex;flex-direction:column;gap:10px;border-bottom:0.5px solid var(--border);}
+.fg{display:flex;flex-direction:column;gap:4px;}
+.fg label{font-size:11px;color:var(--text2);font-weight:500;letter-spacing:.02em;}
+.fg input,.fg select,.fg textarea{font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);padding:7px 10px;background:var(--bg);color:var(--text);font-family:inherit;outline:none;}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--text);}
+.fg textarea{resize:vertical;min-height:88px;line-height:1.6;}
+.opts{display:flex;gap:6px;}
+.opt{padding:4px 12px;font-size:12px;border-radius:99px;border:0.5px solid var(--border2);background:none;cursor:pointer;color:var(--text2);font-family:inherit;}
+.opt.on{background:var(--text);color:var(--bg);border-color:var(--text);}
+.gen-btn{padding:9px;font-size:13px;font-weight:500;background:var(--text);color:var(--bg);border:none;border-radius:var(--r);cursor:pointer;width:100%;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;}
+.gen-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+.hist-area{flex:1;overflow-y:auto;padding:8px;}
+.hist-head{font-size:11px;color:var(--text2);padding:4px 8px 6px;font-weight:500;}
+.hi{padding:8px 10px;border-radius:var(--r);cursor:pointer;border:0.5px solid transparent;margin-bottom:3px;}
+.hi:hover{background:var(--bg2);}
+.hi.sel{background:var(--bg2);border-color:var(--border2);}
+.hi-id{font-size:12px;font-weight:500;}
+.hi-sum{font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.out{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px;color:var(--text3);}
+.empty svg{opacity:.2;}
+.empty p{font-size:13px;text-align:center;line-height:1.7;}
+
+.result{display:flex;flex-direction:column;gap:14px;}
+.blk-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.blk-head span{font-size:13px;font-weight:500;}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;}
+.b-tc{background:var(--blue-bg);color:var(--blue-text);}
+.b-py{background:var(--green-bg);color:var(--green-text);}
+.b-ts{background:var(--amber-bg);color:var(--amber-text);}
+
+.tc-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.tc-tbl th{padding:6px 10px;background:var(--bg2);color:var(--text2);font-weight:500;border:0.5px solid var(--border);text-align:left;width:90px;min-width:90px;vertical-align:top;}
+.tc-tbl td{padding:8px 10px;border:0.5px solid var(--border);color:var(--text);vertical-align:top;white-space:pre-wrap;line-height:1.65;font-size:12px;}
+
+.code-box{background:var(--bg2);border-radius:var(--r);border:0.5px solid var(--border);overflow:hidden;}
+.code-top{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:0.5px solid var(--border);}
+.code-top .fname{font-size:11px;color:var(--text2);font-family:var(--mono);}
+.copy-btn{font-size:11px;padding:3px 8px;border-radius:var(--r);border:0.5px solid var(--border2);background:none;cursor:pointer;color:var(--text2);}
+.copy-btn:hover{background:var(--bg);color:var(--text);}
+.code-body{padding:12px;font-size:12px;font-family:var(--mono);line-height:1.7;overflow-x:auto;color:var(--text);white-space:pre;}
+
+.ts-bar{padding:8px 12px;background:var(--amber-bg);border-radius:var(--r);border:0.5px solid var(--amber-tag);display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.ts-lbl{font-size:11px;color:var(--amber-text);font-weight:500;}
+.ts-tag{font-size:11px;padding:2px 8px;background:var(--amber-tag);color:var(--amber-dark);border-radius:99px;}
+
+.chat-bar{padding:10px 14px;border-top:0.5px solid var(--border);display:flex;gap:8px;align-items:flex-end;background:var(--bg);flex-shrink:0;}
+.chat-bar textarea{flex:1;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);padding:8px 10px;resize:none;min-height:36px;max-height:96px;font-family:inherit;background:var(--bg);color:var(--text);outline:none;}
+.chat-bar textarea:focus{border-color:var(--text);}
+.send-btn{padding:8px 14px;font-size:13px;font-weight:500;background:var(--text);color:var(--bg);border:none;border-radius:var(--r);cursor:pointer;white-space:nowrap;font-family:inherit;}
+.send-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ── PROMPT EDITOR PAGE ── */
+#pg-prompt{flex-direction:column;background:var(--bg);}
+.editor-wrap{display:flex;flex:1;overflow:hidden;gap:0;}
+.editor-left{width:220px;border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:14px 12px;gap:8px;overflow-y:auto;}
+.editor-left h3{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:4px;}
+.sec-btn{padding:6px 10px;font-size:12px;border-radius:var(--r);border:0.5px solid var(--border);background:none;cursor:pointer;color:var(--text2);text-align:left;font-family:inherit;width:100%;}
+.sec-btn:hover{background:var(--bg2);}
+.sec-btn.on{background:var(--bg2);border-color:var(--border2);color:var(--text);font-weight:500;}
+.editor-right{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.editor-toolbar{padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.editor-toolbar span{font-size:12px;color:var(--text2);flex:1;}
+.skill-drop{border:1.5px dashed var(--border2);border-radius:var(--r);padding:8px 14px;font-size:12px;color:var(--text2);cursor:pointer;background:none;font-family:inherit;display:flex;align-items:center;gap:6px;}
+.skill-drop:hover,.skill-drop.over{border-color:var(--text);color:var(--text);background:var(--bg2);}
+.skill-drop.loaded{border-color:var(--green-text);color:var(--green-text);}
+.save-btn{padding:6px 14px;font-size:12px;font-weight:500;background:var(--text);color:var(--bg);border:none;border-radius:var(--r);cursor:pointer;font-family:inherit;white-space:nowrap;}
+.save-btn:hover{opacity:.85;}
+.reset-btn{padding:6px 12px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--r);background:none;cursor:pointer;color:var(--text2);font-family:inherit;white-space:nowrap;}
+.reset-btn:hover{background:var(--bg2);}
+.editor-ta{flex:1;border:none;outline:none;resize:none;font-family:var(--mono);font-size:12px;line-height:1.75;padding:16px;background:var(--bg);color:var(--text);}
+.save-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 18px;border-radius:99px;font-size:12px;font-weight:500;opacity:0;transition:opacity .2s;pointer-events:none;z-index:100;}
+.save-toast.show{opacity:1;}
+
+/* ── API MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;}
+.modal-bg.show{display:flex;}
+.modal{background:var(--bg);border-radius:var(--r-lg);border:0.5px solid var(--border2);padding:24px;width:360px;display:flex;flex-direction:column;gap:14px;}
+.modal h2{font-size:14px;font-weight:500;}
+.modal p{font-size:12px;color:var(--text2);line-height:1.6;}
+.modal input{font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);padding:8px 10px;background:var(--bg);color:var(--text);font-family:var(--mono);width:100%;outline:none;}
+.modal input:focus{border-color:var(--text);}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;}
+.m-ok{padding:7px 16px;font-size:13px;font-weight:500;background:var(--text);color:var(--bg);border:none;border-radius:var(--r);cursor:pointer;font-family:inherit;}
+.m-cancel{padding:7px 14px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);background:none;cursor:pointer;color:var(--text2);font-family:inherit;}
+
+/* ── UTILS ── */
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(128,128,128,.3);border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+.dots{display:inline-flex;gap:4px;align-items:center;}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--text2);animation:dp 1.2s ease-in-out infinite;display:inline-block;}
+.dots i:nth-child(2){animation-delay:.2s;}
+.dots i:nth-child(3){animation-delay:.4s;}
+@keyframes dp{0%,80%,100%{opacity:.3;transform:scale(.8);}40%{opacity:1;transform:scale(1);}}
+.loading-row{display:flex;align-items:center;gap:10px;padding:16px 0;color:var(--text2);font-size:13px;}
+.err{padding:10px 12px;background:var(--red-bg);border-radius:var(--r);color:var(--red-text);font-size:12px;border:0.5px solid var(--red-b);line-height:1.6;}
+hr{border:none;border-top:0.5px solid var(--border);margin:0;}
+
+/* ── JIRA FETCH ── */
+.jira-row{display:flex;gap:6px;align-items:center;}
+.jira-row input{flex:1;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r);padding:7px 10px;background:var(--bg);color:var(--text);font-family:inherit;outline:none;min-width:0;}
+.jira-row input:focus{border-color:var(--text);}
+.fetch-btn{padding:7px 10px;font-size:12px;font-weight:500;border:0.5px solid var(--border2);border-radius:var(--r);background:none;cursor:pointer;color:var(--text2);white-space:nowrap;font-family:inherit;display:flex;align-items:center;gap:5px;}
+.fetch-btn:hover{background:var(--bg2);color:var(--text);}
+.fetch-btn:disabled{opacity:.4;cursor:not-allowed;}
+.jira-preview{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);padding:8px 10px;display:none;flex-direction:column;gap:4px;}
+.jira-preview .jp-id{font-size:11px;color:var(--blue-text);font-weight:500;}
+.jira-preview .jp-title{font-size:12px;font-weight:500;color:var(--text);line-height:1.4;}
+.jira-preview .jp-meta{font-size:11px;color:var(--text2);}
+.jira-preview .jp-apply{margin-top:4px;padding:5px 10px;font-size:12px;font-weight:500;background:var(--text);color:var(--bg);border:none;border-radius:var(--r);cursor:pointer;font-family:inherit;align-self:flex-start;}
+.jira-preview .jp-apply:hover{opacity:.85;}
+.jira-token-note{font-size:11px;color:var(--text3);line-height:1.5;}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-title">AI QA Generator <span>LIMSpro</span></div>
+  <button class="nav-tab on" onclick="goPage('gen',this)">TC 생성</button>
+  <button class="nav-tab" onclick="goPage('prompt',this)">프롬프트 편집</button>
+  <div class="nav-spacer"></div>
+  <button class="api-pill" id="jiraPill" onclick="openJiraModal()" style="margin-left:6px;">
+    <span class="dot"></span><span id="jiraPillText">JIRA 설정</span>
+  </button>
+  <button class="api-pill" id="apiPill" onclick="openApiModal()">
+    <span class="dot"></span><span id="apiPillText">API Key 설정</span>
+  </button>
+</nav>
+
+<!-- PAGE: GENERATOR -->
+<div class="page on" id="pg-gen">
+  <div class="sidebar">
+    <div class="form-block">
+      <div class="fg">
+        <label>JIRA 링크 또는 이슈 번호</label>
+        <div class="jira-row">
+          <input id="jiraLink" type="text" placeholder="LIMS-0000 또는 URL 붙여넣기" oninput="onJiraInput()" onkeydown="if(event.key==='Enter')fetchJira()">
+          <button class="fetch-btn" id="fetchBtn" onclick="fetchJira()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            불러오기
+          </button>
+        </div>
+        <div class="jira-preview" id="jiraPreview">
+          <div class="jp-id" id="jpId"></div>
+          <div class="jp-title" id="jpTitle"></div>
+          <div class="jp-meta" id="jpMeta"></div>
+          <button class="jp-apply" onclick="applyJiraData()">이 내용으로 채우기</button>
+        </div>
+      </div>
+      <div class="fg">
+        <label>JIRA 이슈 번호 <span style="color:var(--text3);font-weight:400">(자동 입력됨)</span></label>
+        <input id="jiraId" type="text" placeholder="LIMS-0000">
+      </div>
+      <div class="fg">
+        <label>분류 (비워두면 자동)</label>
+        <select id="cat">
+          <option value="">자동 분류</option>
+          <option>LES</option><option>시험</option><option>기기</option>
+          <option>재고</option><option>Config</option><option>기준정보</option>
+          <option>시험계획</option><option>조회</option><option>출하</option><option>결재</option><option>Lims</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>기능 설명 / 버그 현상</label>
+        <textarea id="desc" placeholder="예: tui-grid 행 클릭 시 상세 폼이 로드되지 않는 오류&#10;&#10;또는&#10;&#10;시험 결과 저장 후 변경 값 재조회 검증 필요"></textarea>
+      </div>
+      <div class="fg">
+        <label>생성 옵션</label>
+        <div class="opts">
+          <button class="opt on" id="opt-tc" onclick="toggleOpt('tc')">TC</button>
+          <button class="opt on" id="opt-sc" onclick="toggleOpt('sc')">Playwright</button>
+        </div>
+      </div>
+      <button class="gen-btn" id="genBtn" onclick="generate()">생성하기</button>
+    </div>
+    <div class="hist-area">
+      <div class="hist-head">생성 이력</div>
+      <div id="histList"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="out" id="outArea">
+      <div class="empty" id="emptyEl">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path d="M9 12h6M9 16h6M7 4H4a1 1 0 00-1 1v14a1 1 0 001 1h16a1 1 0 001-1V5a1 1 0 00-1-1h-3"/>
+          <path d="M9 4a2 2 0 012-2h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <p>API Key 설정 후 JIRA 번호와<br>기능 설명을 입력하고 생성하기를 눌러주세요.<br><br><small style="font-size:11px;color:var(--text3)">프롬프트 편집 탭에서 SKILL.md를 드래그하면<br>트러블슈팅 규칙이 자동 반영됩니다</small></p>
+      </div>
+      <div id="resultEl" style="display:none;" class="result"></div>
+    </div>
+    <div class="chat-bar" id="chatBar" style="display:none;">
+      <textarea id="chatIn" rows="1" placeholder="수정 요청... (예: 수행절차 추가, 스크립트 재생성, TS-002 패턴 적용)" onkeydown="chatKey(event)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendChat()">전송</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: PROMPT EDITOR -->
+<div class="page" id="pg-prompt">
+  <div class="editor-wrap">
+    <div class="editor-left">
+      <h3>섹션</h3>
+      <button class="sec-btn on" id="sb-system" onclick="switchSection('system',this)">시스템 프롬프트</button>
+      <button class="sec-btn" id="sb-ts" onclick="switchSection('ts',this)">트러블슈팅 (TS)</button>
+      <hr style="margin:4px 0;">
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;padding:4px 2px;">
+        SKILL.md 드래그앤드롭 시 트러블슈팅 섹션이 자동 파싱되어 TS 섹션에 반영됩니다.
+      </div>
+    </div>
+    <div class="editor-right">
+      <div class="editor-toolbar">
+        <span id="editorLabel">시스템 프롬프트 편집 중</span>
+        <div id="dropZone" class="skill-drop" onclick="document.getElementById('mdFile').click()"
+          ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          SKILL.md 드래그 또는 클릭
+        </div>
+        <input type="file" id="mdFile" accept=".md,.txt" style="display:none" onchange="loadFile(event)">
+        <button class="reset-btn" onclick="resetSection()">초기화</button>
+        <button class="save-btn" onclick="saveSection()">저장</button>
+      </div>
+      <textarea class="editor-ta" id="editorTa" spellcheck="false"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- JIRA MODAL -->
+<div class="modal-bg" id="jiraModal">
+  <div class="modal">
+    <h2>JIRA API 설정</h2>
+    <p>JIRA 이슈를 직접 불러오려면 아래 정보를 입력하세요.<br>
+    API 토큰: <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="color:var(--blue-text)">Atlassian 계정 설정</a>에서 발급</p>
+    <div class="fg" style="margin-top:4px;">
+      <label>JIRA 도메인</label>
+      <input type="text" id="jiraDomainIn" placeholder="polaqube.atlassian.net">
+    </div>
+    <div class="fg">
+      <label>이메일 (Atlassian 계정)</label>
+      <input type="text" id="jiraEmailIn" placeholder="you@example.com">
+    </div>
+    <div class="fg">
+      <label>API 토큰</label>
+      <input type="password" id="jiraTokenIn" placeholder="ATATT...">
+    </div>
+    <div class="jira-token-note">⚠ 토큰은 브라우저 localStorage에만 저장되며 외부로 전송되지 않습니다.</div>
+    <div class="modal-btns">
+      <button class="m-cancel" onclick="closeJiraModal()">취소</button>
+      <button class="m-ok" onclick="saveJiraSettings()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- API MODAL -->
+<div class="modal-bg" id="apiModal">
+  <div class="modal">
+    <h2>Gemini API Key 설정</h2>
+    <p>Google AI Studio에서 발급한 API Key를 입력하세요.<br>Key는 이 브라우저에만 저장됩니다 (localStorage).</p>
+    <input type="password" id="apiKeyIn" placeholder="AIza..." oninput="onApiKeyInput()">
+    <div class="fg" style="margin-top:2px;">
+      <label style="display:flex;align-items:center;justify-content:space-between;">
+        모델 선택
+        <button onclick="fetchModelList()" id="fetchModelsBtn" style="font-size:11px;padding:2px 8px;border:0.5px solid var(--border2);border-radius:var(--r);background:none;cursor:pointer;color:var(--text2);font-family:inherit;">목록 불러오기</button>
+      </label>
+      <select id="modelIn">
+        <option value="gemini-2.0-flash">gemini-2.0-flash (기본값)</option>
+        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+        <option value="gemini-1.5-flash-001">gemini-1.5-flash-001</option>
+        <option value="gemini-1.5-flash-002">gemini-1.5-flash-002</option>
+        <option value="gemini-1.5-pro-001">gemini-1.5-pro-001</option>
+        <option value="gemini-1.5-pro-002">gemini-1.5-pro-002</option>
+      </select>
+    </div>
+    <div class="jira-token-note" id="modelNote">API Key 입력 후 "목록 불러오기"를 누르면 사용 가능한 모델만 표시됩니다.</div>
+    <div class="modal-btns">
+      <button class="m-cancel" onclick="closeApiModal()">취소</button>
+      <button class="m-ok" onclick="saveApiKey()">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="save-toast" id="toast"></div>
+
+<script>
+// ── DEFAULTS ──
+const DEFAULT_SYSTEM = `당신은 LIMSpro LIMS QA 전문가입니다. TC와 Playwright 스크립트를 생성할 때 아래 모든 규칙을 반드시 따르세요.
+
+## TC 구조 (8개 컬럼)
+- 관리번호: JIRA 이슈 번호 (LIMS-XXXX 형식)
+- 요약: [모듈명] 기능/오류 설명
+- 분류: LES / 시험 / 기기 / 재고 / Config / 기준정보 / 시험계획 / 조회 / 출하 / 결재 / Lims 중 하나 (결재 기능은 반드시 "결재" 사용)
+- Precondition: 번호 목록(1. 2. ...), 마지막은 "진입 상태"로 마무리
+- 수행절차: 번호 목록, UI 경로는 > 구분, 버튼은 [버튼명], 입력값은 '값'
+- 기대 결과: 각 수행절차와 1:1 대응, ~확인 으로 마무리
+- 테스트 결과: 빈칸
+- 비고: 선택
+
+## Playwright 스크립트 필수 규칙
+1. 클래스 기반 구조 (class TestLIMS_XXXX:)
+2. allure 태그 4종: @allure.story("분류") + @allure.title("LIMS-XXXX") + @allure.description("TC요약") + @allure.link(url="https://polaqube.atlassian.net/browse/LIMS-XXXX", name="JIRA")
+3. 모든 allure.step 블록 시작 시: frame = page.frame_locator(common_locators.IFRAME) 반드시 재선언
+4. attach_screenshot(page) 주요 step 완료 후 삽입
+5. page.pause() 절대 미사용
+6. 입력 필드: 1차 role 기반, fallback id 기반
+
+## allure.step 네이밍
+- "Precondition"
+- "Test Step N: [동작 설명]"
+- "Expected Result N 기대결과: 결과 설명"
+
+## 필수 임포트
+import allure
+import pytest
+from playwright.sync_api import Page, expect
+from utils import login, attach_screenshot
+import common_locators
+
+## LIMS 대메뉴 li 순서
+1=조회, 2=시험, 3=시험계획, 4=재고, 5=기기, 6=출하COA, 7=출하, 8=기준정보, 9=결재
+
+## 출력 형식 (JSON만, 코드블록/설명 없이)
+{"tc":{"관리번호":"","요약":"","분류":"","Precondition":"","수행절차":"","기대결과":"","테스트결과":"","비고":""},"script":null,"applied_ts":[],"summary":""}
+
+applied_ts: 적용한 트러블슈팅 항목 배열. 예: ["TS-002: tui-grid 더블클릭 패턴 적용"]
+script: Playwright 요청 시 Python 코드 전체 문자열, 미요청 시 null.`;
+
+const DEFAULT_TS = `## 트러블슈팅 레퍼런스 (스크립트 생성 시 반드시 참조)
+아래 패턴을 기능/증상에 맞게 적극 적용하세요. 적용한 항목은 applied_ts 배열에 기재.
+
+### [TS-001] tui-grid 행 내 특정 컬럼 값 추출 — xpath 방식
+증상: 특정 행의 셀 값을 단순 inner_text()로 추출 시 행 구분 불가
+해결:
+  target_cell = frame.locator('td[data-column-name="targetCol"]').filter(has_text="N").first
+  related_value = target_cell.locator("xpath=ancestor::tr//td[@data-column-name='eqipCd']").inner_text().strip()
+fallback (data-column-name 없을 때):
+  row = target_cell.locator("xpath=ancestor::tr")
+  related_value = row.locator("td:nth-child(N)").inner_text().strip()
+
+### [TS-002] tui-grid 행 클릭 불안정 — 더블 클릭 패턴
+증상: .click() 1회로 행 선택 안 되거나 폼 데이터 미노출
+해결:
+  row_cell = frame.locator('td[data-column-name="colName"]').first
+  row_cell.click()
+  row_cell.click()  # 2회 클릭으로 안정화
+
+### [TS-003] tui-grid 정렬 후 데이터 로딩 대기
+증상: 컬럼 헤더 클릭(정렬) 후 바로 첫 번째 행 접근 시 stale element 또는 빈 값
+해결:
+  frame.locator("th[data-column-name='colName']").click()
+  expect(frame.get_by_role("cell", name="1", exact=True).locator("div").first).to_be_visible(timeout=10000)
+
+### [TS-004] CONFIG 메뉴 진입 — hrefId 매핑
+증상: move_to_menu_sub() 호출 시 hrefId 모르면 메뉴 진입 실패
+해결: move_to_menu_sub(page, "1", "기준정보", "#hrefId48", "기기 관리", "기기 관리")
+참고: hrefId는 개발자 도구에서 해당 메뉴 <a> 태그의 id 속성 확인
+
+### [TS-005] LIMS 대메뉴 li 순서 매핑
+li순서: 1=조회, 2=시험, 3=시험계획, 4=재고, 5=기기, 6=출하COA, 7=출하, 8=기준정보, 9=결재
+예: page.locator("li:nth-child(5) > .menu-show").click()  # 기기 메뉴
+
+### [TS-006] iframe 내 locator timeout
+증상: frame.get_by_role() 또는 frame.locator()에서 timeout 발생
+해결: Precondition에서 Flags 버튼 노출 확인 후 frame 접근
+  expect(page.locator("a").filter(has_text="Flags")).to_be_visible(timeout=10000)
+  frame = page.frame_locator(common_locators.IFRAME)
+  expect(frame.get_by_role("button", name="조회")).to_be_visible(timeout=10000)
+
+### [TS-007] 저장 후 값 변경 검증 — 재조회 패턴
+증상: 저장 후 행 노출만 확인하면 실제 값 변경 여부 미검증
+해결:
+  target_cell = frame.locator('td[data-column-name="statusCol"]').filter(has_text="N").first
+  key_value = target_cell.locator("xpath=ancestor::tr//td[@data-column-name='keyCol']").inner_text().strip()
+  # 값 변경 후 저장
+  frame.locator("input[id*='keyInput']").fill(key_value)
+  frame.get_by_role("button", name="조회").click()
+  expect(frame.locator('td[data-column-name="statusCol"]').filter(has_text="Y").first).to_be_visible(timeout=10000)`;
+
+// ── STATE ──
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+function getGeminiModel() { return getSaved('gemini_model', 'gemini-2.0-flash'); }
+let opts = {tc:true, sc:true};
+let history = [];
+let conv = [];
+let loading = false;
+let selIdx = -1;
+let curSection = 'system';
+
+// ── STORAGE HELPERS ──
+function getSaved(key, def) { try { return localStorage.getItem(key) || def; } catch(e) { return def; } }
+function setSaved(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+
+function getSystemPrompt() { return getSaved('qa_system', DEFAULT_SYSTEM); }
+function getTsPrompt()     { return getSaved('qa_ts', DEFAULT_TS); }
+function getFullPrompt()   { return getSystemPrompt() + '\n\n' + getTsPrompt(); }
+function getApiKey()       { return getSaved('qa_apikey', ''); }
+
+// ── NAV ──
+function goPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('on'));
+  document.getElementById('pg-' + id).classList.add('on');
+  btn.classList.add('on');
+  if (id === 'prompt') initEditor();
+}
+
+// ── API MODAL ──
+function onApiKeyInput() { /* key 입력 시 모델 노트 초기화 */ }
+
+function openApiModal() {
+  document.getElementById('apiKeyIn').value = getApiKey();
+  const modelSel = document.getElementById('modelIn');
+  const saved = getSaved('gemini_model', 'gemini-2.0-flash');
+  // 저장된 모델이 목록에 없으면 option 추가
+  if (![...modelSel.options].some(o => o.value === saved)) {
+    const opt = document.createElement('option');
+    opt.value = saved; opt.textContent = saved + ' (저장됨)';
+    modelSel.insertBefore(opt, modelSel.firstChild);
+  }
+  modelSel.value = saved;
+  document.getElementById('modelNote').textContent = 'API Key 입력 후 "목록 불러오기"를 누르면 사용 가능한 모델만 표시됩니다.';
+  document.getElementById('apiModal').classList.add('show');
+  setTimeout(() => document.getElementById('apiKeyIn').focus(), 50);
+}
+function closeApiModal() { document.getElementById('apiModal').classList.remove('show'); }
+function saveApiKey() {
+  const k = document.getElementById('apiKeyIn').value.trim();
+  const m = document.getElementById('modelIn').value;
+  setSaved('qa_apikey', k);
+  setSaved('gemini_model', m);
+  closeApiModal();
+  updateApiPill();
+  showToast(`저장됨 — ${m}`);
+}
+
+async function fetchModelList() {
+  const key = document.getElementById('apiKeyIn').value.trim();
+  if (!key) { alert('API Key를 먼저 입력해주세요.'); return; }
+  const btn = document.getElementById('fetchModelsBtn');
+  const note = document.getElementById('modelNote');
+  btn.textContent = '불러오는 중...'; btn.disabled = true;
+  note.textContent = '사용 가능한 모델 조회 중...';
+  try {
+    const res = await fetch(`${GEMINI_BASE}?key=${key}`);
+    if (!res.ok) throw new Error(`API 오류 (${res.status})`);
+    const data = await res.json();
+    // generateContent 지원 모델만 필터
+    const models = (data.models || [])
+      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+      .map(m => m.name.replace('models/', ''))
+      .filter(n => n.startsWith('gemini'));
+    if (!models.length) throw new Error('사용 가능한 모델 없음');
+    const sel = document.getElementById('modelIn');
+    const cur = getSaved('gemini_model', 'gemini-2.0-flash');
+    sel.innerHTML = models.map(m =>
+      `<option value="${m}"${m === cur ? ' selected' : ''}>${m}</option>`
+    ).join('');
+    note.textContent = `✓ ${models.length}개 모델 조회됨. 권장: gemini-2.0-flash 또는 gemini-2.0-flash-lite`;
+  } catch(e) {
+    note.textContent = '오류: ' + e.message;
+  } finally {
+    btn.textContent = '목록 불러오기'; btn.disabled = false;
+  }
+}
+function updateApiPill() {
+  const k = getApiKey();
+  const pill = document.getElementById('apiPill');
+  const txt = document.getElementById('apiPillText');
+  if (k.startsWith('AIza') && k.length > 20) {
+    pill.classList.add('ok');
+    txt.textContent = 'API Key 설정됨';
+  } else {
+    pill.classList.remove('ok');
+    txt.textContent = 'API Key 설정';
+  }
+}
+
+// ── OPTS ──
+function toggleOpt(k) {
+  opts[k] = !opts[k];
+  document.getElementById('opt-' + k).classList.toggle('on', opts[k]);
+}
+
+// ── GEMINI ──
+// 과부하(503/429) 시 순서대로 폴백
+const FALLBACK_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+];
+
+async function callGeminiModel(model, messages, key) {
+  const url = `${GEMINI_BASE}/${model}:generateContent?key=${key}`;
+  const body = {
+    system_instruction: { parts: [{ text: getFullPrompt() }] },
+    contents: messages,
+    generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
+  };
+  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err.error?.message || `API 오류 (${res.status})`;
+    const overloaded = res.status === 503 || res.status === 429 || msg.includes('high demand') || msg.includes('overloaded');
+    const e = new Error(msg);
+    e.overloaded = overloaded;
+    throw e;
+  }
+  const data = await res.json();
+  return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+}
+
+async function callGemini(messages) {
+  const key = getApiKey();
+  if (!key) throw new Error('API Key가 설정되지 않았습니다. 우측 상단에서 설정해주세요.');
+
+  const primary = getGeminiModel();
+  const queue = [primary, ...FALLBACK_MODELS.filter(m => m !== primary)];
+
+  for (let i = 0; i < queue.length; i++) {
+    const model = queue[i];
+    const isFallback = i > 0;
+    if (isFallback) {
+      showLoadingState(`${primary} 과부하 → ${model} 으로 재시도 중...`);
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    try {
+      const result = await callGeminiModel(model, messages, key);
+      if (isFallback) showToast(`폴백 모델 사용: ${model}`);
+      return result;
+    } catch(e) {
+      if (e.overloaded && i < queue.length - 1) continue; // 다음 모델 시도
+      throw e; // 마지막이거나 다른 오류면 그대로 던짐
+    }
+  }
+}
+
+function parseResult(raw) {
+  // 1) 코드블록 마커 제거
+  let text = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+  // 2) JSON 범위 추출
+  const s = text.indexOf('{'), e = text.lastIndexOf('}');
+  if (s >= 0 && e >= 0) text = text.slice(s, e + 1);
+
+  // 3) 문자열 내부 실제 개행 이스케이프
+  text = text.replace(/("(?:[^"\\]|\\.)*")|([^"]*)/g, (match, str, nonStr) => {
+    if (str) return str.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+    return nonStr || '';
+  });
+
+  // 4) 직접 파싱 시도
+  try { return JSON.parse(text); } catch(e1) {}
+
+  // 5) 제어문자 제거 후 재시도
+  try { return JSON.parse(text.replace(/[\u0000-\u001F\u007F]/g, ' ')); } catch(e2) {}
+
+  // 6) 잘린 JSON 복구 시도: 열린 따옴표/괄호를 닫아가며 재시도
+  try {
+    let fixed = text;
+    // 열린 문자열 닫기
+    const quoteCount = (fixed.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) fixed += '"';
+    // 열린 중괄호/대괄호 닫기
+    const opens = [];
+    for (const ch of fixed) {
+      if (ch === '{' || ch === '[') opens.push(ch === '{' ? '}' : ']');
+      else if (ch === '}' || ch === ']') opens.pop();
+    }
+    fixed += opens.reverse().join('');
+    return JSON.parse(fixed);
+  } catch(e3) {}
+
+  // 7) 최후 fallback: 원본 그대로 비고에 표시
+  console.error('JSON 파싱 실패. 원본:', raw);
+  return {
+    tc: {
+      관리번호: '', 요약: '[파싱 오류] Gemini 응답을 JSON으로 변환하지 못했습니다.',
+      분류: '', Precondition: '', 수행절차: '', 기대결과: '', 테스트결과: '',
+      비고: '원본 응답:\n' + raw.slice(0, 800)
+    },
+    script: null, applied_ts: [], summary: '파싱 오류'
+  };
+}
+
+// ── GENERATE ──
+async function generate() {
+  if (loading) return;
+  const key = getApiKey();
+  if (!key || !key.startsWith('AIza')) { openApiModal(); return; }
+  const jiraId = document.getElementById('jiraId').value.trim() || 'LIMS-0000';
+  const cat    = document.getElementById('cat').value;
+  const desc   = document.getElementById('desc').value.trim();
+  if (!desc) { alert('기능 설명을 입력해주세요.'); return; }
+
+  loading = true;
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> 생성 중...';
+
+  const userMsg = `JIRA 이슈 번호: ${jiraId}
+${cat ? `분류: ${cat}\n` : ''}기능 설명: ${desc}
+생성 옵션: ${[opts.tc ? 'TC' : '', opts.sc ? 'Playwright 스크립트' : ''].filter(Boolean).join(' + ')}
+
+기능/증상을 분석하여 관련 트러블슈팅 패턴(TS-001~TS-007)을 적용하고, applied_ts에 반드시 명시해주세요.`;
+
+  conv = [{ role: 'user', parts: [{ text: userMsg }] }];
+  showLoadingState('Gemini가 트러블슈팅 패턴 분석 중...');
+
+  try {
+    const raw = await callGemini(conv);
+    conv.push({ role: 'model', parts: [{ text: raw }] });
+    const parsed = parseResult(raw);
+    renderResult(parsed);
+    history.unshift({ id: jiraId, summary: parsed.summary || desc.slice(0, 40), parsed, conv: [...conv] });
+    if (history.length > 30) history.pop();
+    selIdx = 0;
+    renderHistory();
+  } catch(e) {
+    showError(e.message);
+  } finally {
+    loading = false;
+    btn.disabled = false;
+    btn.textContent = '생성하기';
+  }
+}
+
+// ── CHAT ──
+async function sendChat() {
+  if (loading) return;
+  const input = document.getElementById('chatIn').value.trim();
+  if (!input) return;
+  loading = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('chatIn').value = '';
+  conv.push({ role: 'user', parts: [{ text: input }] });
+  showLoadingState('Gemini가 수정 중...');
+  try {
+    const raw = await callGemini(conv);
+    conv.push({ role: 'model', parts: [{ text: raw }] });
+    const parsed = parseResult(raw);
+    renderResult(parsed);
+    const idx = selIdx >= 0 ? selIdx : 0;
+    if (history[idx]) { history[idx].parsed = parsed; history[idx].conv = [...conv]; }
+  } catch(e) {
+    showError(e.message);
+  } finally {
+    loading = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+function chatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
+
+// ── RENDER ──
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showLoadingState(msg) {
+  document.getElementById('emptyEl').style.display = 'none';
+  document.getElementById('resultEl').style.display = 'none';
+  let l = document.getElementById('loadEl');
+  if (!l) { l = document.createElement('div'); l.id = 'loadEl'; l.className = 'loading-row'; document.getElementById('outArea').appendChild(l); }
+  l.innerHTML = `<div class="dots"><i></i><i></i><i></i></div><span>${msg}</span>`;
+  l.style.display = 'flex';
+}
+function hideLoading() { const l = document.getElementById('loadEl'); if (l) l.style.display = 'none'; }
+function showError(msg) {
+  hideLoading();
+  document.getElementById('emptyEl').style.display = 'none';
+  const r = document.getElementById('resultEl');
+  r.style.display = 'flex';
+  r.innerHTML = `<div class="err">오류: ${esc(msg)}</div>`;
+}
+
+function renderResult(parsed) {
+  hideLoading();
+  const area = document.getElementById('resultEl');
+  area.style.display = 'flex';
+  area.innerHTML = '';
+
+  // TS 배지
+  if (parsed.applied_ts && parsed.applied_ts.length > 0) {
+    const d = document.createElement('div'); d.className = 'ts-bar';
+    d.innerHTML = `<span class="ts-lbl">적용된 트러블슈팅</span>` +
+      parsed.applied_ts.map(t => `<span class="ts-tag">${esc(t)}</span>`).join('');
+    area.appendChild(d);
+  }
+
+  // TC 테이블
+  if (parsed.tc && opts.tc) {
+    const tc = parsed.tc;
+    const rows = [
+      ['관리번호', tc['관리번호']], ['요약', tc['요약']], ['분류', tc['분류']],
+      ['Precondition', tc['Precondition']], ['수행절차', tc['수행절차']],
+      ['기대결과', tc['기대결과']], ['테스트 결과', tc['테스트결과']], ['비고', tc['비고']]
+    ];
+    const hdr = document.createElement('div');
+    hdr.innerHTML = `<div class="blk-head"><span>테스트 케이스</span><span class="badge b-tc">TC</span></div>`;
+    area.appendChild(hdr);
+    const tbl = document.createElement('table'); tbl.className = 'tc-tbl';
+    tbl.innerHTML = rows.map(([k,v]) => `<tr><th>${k}</th><td>${esc(v||'')}</td></tr>`).join('');
+    area.appendChild(tbl);
+  }
+
+  // 스크립트
+  if (parsed.script && opts.sc) {
+    const hr = document.createElement('hr'); area.appendChild(hr);
+    const jiraId = parsed.tc?.관리번호 || 'script';
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<div class="blk-head"><span>Playwright 스크립트</span><span class="badge b-py">Python</span></div>`;
+    const cb = document.createElement('div'); cb.className = 'code-box';
+    cb.innerHTML = `<div class="code-top"><span class="fname">${esc(jiraId)}.py</span><button class="copy-btn" onclick="copyCode(this)">복사</button></div>`;
+    const body = document.createElement('div'); body.className = 'code-body'; body.textContent = parsed.script;
+    cb.appendChild(body); wrap.appendChild(cb); area.appendChild(wrap);
+  }
+
+  document.getElementById('chatBar').style.display = 'flex';
+  document.getElementById('emptyEl').style.display = 'none';
+}
+
+function copyCode(btn) {
+  const code = btn.closest('.code-box').querySelector('.code-body').textContent;
+  navigator.clipboard.writeText(code).then(() => { btn.textContent = '복사됨!'; setTimeout(() => btn.textContent = '복사', 1500); });
+}
+
+// ── HISTORY ──
+function renderHistory() {
+  const el = document.getElementById('histList');
+  if (!history.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 10px;">이력 없음</div>'; return; }
+  el.innerHTML = history.map((h, i) => `
+    <div class="hi${selIdx===i?' sel':''}" onclick="loadHist(${i})">
+      <div class="hi-id">${esc(h.id)}</div>
+      <div class="hi-sum">${esc(h.summary)}</div>
+    </div>`).join('');
+}
+function loadHist(i) {
+  selIdx = i;
+  const h = history[i];
+  conv = [...h.conv];
+  renderResult(h.parsed);
+  renderHistory();
+}
+
+// ── PROMPT EDITOR ──
+function initEditor() {
+  loadSection(curSection);
+}
+function switchSection(name, btn) {
+  saveCurrentEditorContent();
+  curSection = name;
+  document.querySelectorAll('.sec-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  loadSection(name);
+}
+function loadSection(name) {
+  const labels = { system: '시스템 프롬프트 편집 중', ts: '트러블슈팅 (TS) 편집 중' };
+  document.getElementById('editorLabel').textContent = labels[name] || '편집 중';
+  document.getElementById('editorTa').value = name === 'system' ? getSaved('qa_system', DEFAULT_SYSTEM) : getSaved('qa_ts', DEFAULT_TS);
+}
+function saveCurrentEditorContent() {
+  const val = document.getElementById('editorTa').value;
+  setSaved(curSection === 'system' ? 'qa_system' : 'qa_ts', val);
+}
+function saveSection() {
+  saveCurrentEditorContent();
+  showToast('저장됨 — 다음 생성부터 반영됩니다');
+}
+function resetSection() {
+  if (!confirm('이 섹션을 기본값으로 초기화할까요?')) return;
+  const def = curSection === 'system' ? DEFAULT_SYSTEM : DEFAULT_TS;
+  document.getElementById('editorTa').value = def;
+  setSaved(curSection === 'system' ? 'qa_system' : 'qa_ts', def);
+  showToast('초기화됨');
+}
+
+// ── SKILL.MD 드래그앤드롭 ──
+function dragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('over'); }
+function dragLeave()  { document.getElementById('dropZone').classList.remove('over'); }
+function dropFile(e)  { e.preventDefault(); dragLeave(); processFile(e.dataTransfer.files[0]); }
+function loadFile(e)  { processFile(e.target.files[0]); }
+
+function processFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const { system, ts } = parseSkillMd(text);
+    const parts = [];
+
+    if (system) {
+      setSaved('qa_system', system);
+      if (curSection === 'system') document.getElementById('editorTa').value = system;
+      parts.push('시스템 프롬프트');
+    }
+    if (ts) {
+      setSaved('qa_ts', ts);
+      if (curSection === 'ts') document.getElementById('editorTa').value = ts;
+      parts.push('트러블슈팅(TS)');
+    }
+
+    const label = parts.length > 0
+      ? `${file.name} — ${parts.join(' + ')} 반영됨`
+      : `${file.name} — 내용 없음`;
+
+    const dz = document.getElementById('dropZone');
+    dz.classList.add('loaded');
+    dz.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${label}`;
+    showToast(parts.length > 0 ? `SKILL.md 반영 완료 — ${parts.join(', ')} 업데이트됨` : 'SKILL.md에서 파싱할 내용을 찾지 못했습니다');
+
+    setTimeout(() => {
+      dz.classList.remove('loaded');
+      dz.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> SKILL.md 드래그 또는 클릭`;
+    }, 3500);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+/**
+ * SKILL.md 전체를 파싱해 { system, ts } 로 분리 반환
+ *
+ * 분리 기준:
+ *   - ts    : "## 🔧 트러블슈팅" (또는 "## 트러블슈팅 / Troubleshooting") 이하 ~ 파일 끝
+ *   - system: 트러블슈팅 섹션을 제외한 나머지 본문 (front-matter 제거 후)
+ *
+ * front-matter(--- ... ---) 는 프롬프트에 불필요하므로 제거.
+ */
+function parseSkillMd(text) {
+  // 1) front-matter 제거 (--- 로 시작/끝나는 블록)
+  const stripped = text.replace(/^---[\s\S]*?---\s*/m, '').trim();
+
+  // 2) 트러블슈팅 섹션 시작 위치 찾기
+  const tsPattern = /^##\s*(🔧\s*)?트러블슈팅|^##\s*Troubleshooting/im;
+  const tsMatch = tsPattern.exec(stripped);
+
+  if (!tsMatch) {
+    // 트러블슈팅 섹션이 없으면 전체를 시스템으로
+    return { system: stripped || null, ts: null };
+  }
+
+  const tsStart = tsMatch.index;
+  const systemRaw = stripped.slice(0, tsStart).trim();
+  const tsRaw     = stripped.slice(tsStart).trim();
+
+  return {
+    system: systemRaw || null,
+    ts:     tsRaw     || null,
+  };
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── PROXY ──
+const PROXY_BASE = 'http://localhost:8787';
+let proxyAvailable = false;
+
+async function checkProxy() {
+  try {
+    const r = await fetch(`${PROXY_BASE}/health`, { signal: AbortSignal.timeout(1500) });
+    proxyAvailable = r.ok;
+  } catch { proxyAvailable = false; }
+  updateJiraPill();
+  return proxyAvailable;
+}
+
+// ── JIRA SETTINGS MODAL ──
+function openJiraModal() {
+  document.getElementById('jiraDomainIn').value  = getSaved('jira_domain', 'polaqube.atlassian.net');
+  document.getElementById('jiraEmailIn').value   = getSaved('jira_email', '');
+  document.getElementById('jiraTokenIn').value   = getSaved('jira_token', '');
+  document.getElementById('jiraModal').classList.add('show');
+}
+function closeJiraModal() { document.getElementById('jiraModal').classList.remove('show'); }
+
+async function saveJiraSettings() {
+  const domain = document.getElementById('jiraDomainIn').value.trim();
+  const email  = document.getElementById('jiraEmailIn').value.trim();
+  const token  = document.getElementById('jiraTokenIn').value.trim();
+
+  // localStorage 저장 (기존 동작 유지)
+  setSaved('jira_domain', domain);
+  setSaved('jira_email',  email);
+  setSaved('jira_token',  token);
+
+  // 프록시가 떠 있으면 서버 config도 동기화
+  if (proxyAvailable) {
+    try {
+      await fetch(`${PROXY_BASE}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, email, token })
+      });
+      showToast('JIRA 설정 저장됨 (프록시 연동)');
+    } catch {
+      showToast('JIRA 설정 저장됨 (로컬만)');
+    }
+  } else {
+    showToast('JIRA 설정 저장됨');
+  }
+
+  closeJiraModal();
+  updateJiraPill();
+}
+
+function updateJiraPill() {
+  const ok  = getSaved('jira_token','') && getSaved('jira_email','');
+  const pill = document.getElementById('jiraPill');
+  const txt  = document.getElementById('jiraPillText');
+  if (ok && proxyAvailable) {
+    pill.classList.add('ok');
+    txt.textContent = 'JIRA 연결됨 (프록시)';
+  } else if (ok) {
+    pill.classList.remove('ok');
+    txt.textContent = 'JIRA 설정됨 (프록시 꺼짐)';
+  } else {
+    pill.classList.remove('ok');
+    txt.textContent = 'JIRA 설정';
+  }
+}
+
+// ── JIRA INPUT HANDLER ──
+let jiraFetched = null; // 마지막으로 불러온 이슈 데이터
+
+function onJiraInput() {
+  // 프리뷰 숨기기
+  document.getElementById('jiraPreview').style.display = 'none';
+  jiraFetched = null;
+}
+
+function parseIssueKey(input) {
+  // URL: .../browse/LIMS-1234 또는 .../jira/...LIMS-1234
+  const urlMatch = input.match(/browse\/([A-Z]+-\d+)/i) || input.match(/\/([A-Z]+-\d+)/i);
+  if (urlMatch) return urlMatch[1].toUpperCase();
+  // 순수 이슈 키: LIMS-1234
+  const keyMatch = input.trim().match(/^([A-Z]+-\d+)$/i);
+  if (keyMatch) return keyMatch[1].toUpperCase();
+  return null;
+}
+
+// ── ADF → 텍스트 파서 ──
+function adfToText(node, depth) {
+  depth = depth || 0;
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (node.type === 'text') {
+    let t = node.text || '';
+    if (node.marks) {
+      for (const m of node.marks) {
+        if (m.type === 'code') t = '`' + t + '`';
+        if (m.type === 'strong') t = '**' + t + '**';
+      }
+    }
+    return t;
+  }
+  if (node.type === 'hardBreak') return '\n';
+  if (node.type === 'mention')   return node.attrs?.text || '';
+  if (node.type === 'emoji')     return node.attrs?.text || '';
+  if (node.type === 'inlineCard') return node.attrs?.url || '';
+  if (node.type === 'media' || node.type === 'mediaSingle' || node.type === 'mediaGroup') return '';
+
+  const children = (node.content || []).map(c => adfToText(c, depth + 1)).join('');
+  const indent = '  '.repeat(depth);
+
+  switch (node.type) {
+    case 'doc':          return children.trim();
+    case 'paragraph':    return children + '\n';
+    case 'heading': {
+      const lvl = node.attrs?.level || 2;
+      return '#'.repeat(lvl) + ' ' + children.trim() + '\n';
+    }
+    case 'bulletList':   return children;
+    case 'orderedList':  return children;
+    case 'listItem':     return indent + '- ' + children.replace(/^\n+/, '').replace(/\n$/, '') + '\n';
+    case 'blockquote':   return children.split('\n').map(l => '> ' + l).join('\n') + '\n';
+    case 'codeBlock':    return '```\n' + children + '\n```\n';
+    case 'rule':         return '---\n';
+    case 'panel': {
+      // 패널 타입(info/warning/note/success/error) 포함
+      const pType = node.attrs?.panelType || '';
+      const label = pType ? `[${pType.toUpperCase()}] ` : '';
+      return label + children;
+    }
+    case 'expand':
+    case 'nestedExpand': {
+      const title = node.attrs?.title ? `[${node.attrs.title}]\n` : '';
+      return title + children;
+    }
+    case 'table':        return children + '\n';
+    case 'tableRow':     return children + '\n';
+    case 'tableHeader':  return (children.trim() || '-') + ' | ';
+    case 'tableCell':    return (children.trim() || ' ') + ' | ';
+    case 'taskList':     return children;
+    case 'taskItem':     return '[ ] ' + children.replace(/^\n+/, '') + '\n';
+    default:             return children;
+  }
+}
+
+function extractAllComments(comments) {
+  // 전체 코멘트를 날짜 오름차순으로 합쳐서 반환
+  if (!comments || !comments.length) return null;
+  return comments.map((c, i) => {
+    const author = c.author?.displayName || '작성자 불명';
+    const date   = c.created ? c.created.slice(0, 10) : '';
+    const text   = adfToText(c.body).trim();
+    return `[코멘트 ${i + 1}] ${author} (${date})\n${text}`;
+  }).join('\n\n');
+}
+
+// ── JIRA API FETCH ──
+async function fetchJira() {
+  const input = document.getElementById('jiraLink').value.trim();
+  if (!input) { alert('JIRA 링크 또는 이슈 번호를 입력해주세요.'); return; }
+
+  const issueKey = parseIssueKey(input);
+  if (!issueKey) { alert('유효한 JIRA 이슈 번호를 찾을 수 없습니다.\n예: LIMS-1211 또는 URL 전체'); return; }
+
+  const domain = getSaved('jira_domain', '');
+  const email  = getSaved('jira_email', '');
+  const token  = getSaved('jira_token', '');
+
+  if (!domain || !email || !token) {
+    if (confirm('JIRA 설정이 필요합니다. 지금 설정하시겠어요?')) openJiraModal();
+    return;
+  }
+
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="border-top-color:var(--text2)"></span> 불러오는 중...';
+
+  try {
+    let res;
+    const jiraPath = `/rest/api/3/issue/${issueKey}?fields=summary,description,comment,issuetype,components,labels,status,priority,assignee,reporter,subtasks,parent`;
+
+    if (proxyAvailable) {
+      // 프록시 경유 (CORS 우회)
+      res = await fetch(`${PROXY_BASE}/jira${jiraPath}`);
+    } else {
+      // 직접 호출 (CORS 오류 가능 — 프록시 실행 권장)
+      const creds = btoa(`${email}:${token}`);
+      res = await fetch(`https://${domain}${jiraPath}`, {
+        headers: { 'Authorization': `Basic ${creds}`, 'Accept': 'application/json' }
+      });
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const hint = !proxyAvailable ? '\n\n💡 jira_proxy.py를 실행하면 CORS 오류를 우회할 수 있습니다.' : '';
+      throw new Error((err.errorMessages?.[0] || err.error || `JIRA API 오류 (${res.status})`) + hint);
+    }
+
+    const data = await res.json();
+    const fields = data.fields;
+
+    // 기본 정보 파싱
+    const summary    = fields.summary || '';
+    const issueType  = fields.issuetype?.name || '';
+    const component  = fields.components?.[0]?.name || '';
+    const status     = fields.status?.name || '';
+    const priority   = fields.priority?.name || '';
+    const assignee   = fields.assignee?.displayName || '';
+    const descText   = adfToText(fields.description).trim();
+    const comments   = fields.comment?.comments || [];
+    const commentText = extractAllComments(comments);
+    const parentKey  = fields.parent?.key || '';
+
+    jiraFetched = { key: issueKey, summary, issueType, component, status, priority, assignee, descText, commentText, parentKey, comments };
+
+    // 프리뷰 표시
+    const metaParts = [priority, assignee, component].filter(Boolean).join(' · ');
+    const commentCount = comments.length;
+    document.getElementById('jpId').textContent    = `${issueKey} · ${issueType} · ${status}`;
+    document.getElementById('jpTitle').textContent = summary;
+    document.getElementById('jpMeta').textContent  =
+      (descText ? descText.slice(0, 100) + (descText.length > 100 ? '...' : '') : '본문 없음') +
+      (commentCount ? ` | 코멘트 ${commentCount}개` : '');
+    document.getElementById('jiraPreview').style.display = 'flex';
+
+    showToast(`${issueKey} 불러오기 완료 — 본문 ${descText.length}자, 코멘트 ${commentCount}개`);
+  } catch(e) {
+    showToast('오류: ' + e.message);
+    alert('JIRA 불러오기 실패:\n' + e.message + '\n\n도메인·이메일·토큰 설정을 확인해주세요.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 불러오기`;
+  }
+}
+
+// ── JIRA 데이터 → 폼 자동 채우기 ──
+function applyJiraData() {
+  if (!jiraFetched) return;
+  const { key, summary, descText, commentText, parentKey } = jiraFetched;
+
+  document.getElementById('jiraId').value = key;
+
+  // 본문 + 코멘트 전체 합산
+  const parts = [];
+  if (parentKey)    parts.push(`[상위 이슈] ${parentKey}`);
+  if (descText)     parts.push(`[기능 설명 / 버그 현상]\n${descText}`);
+  if (commentText)  parts.push(`[코멘트]\n${commentText}`);
+  if (!parts.length) parts.push(summary);
+
+  document.getElementById('desc').value = parts.join('\n\n').trim();
+  document.getElementById('jiraPreview').style.display = 'none';
+  showToast(`${key} 적용 완료 — 본문+코멘트 전체 반영`);
+}
+
+// ── INIT ──
+updateApiPill();
+updateJiraPill();
+renderHistory();
+checkProxy(); // 프록시 상태 비동기 확인
+</script>
+</body>
+</html>
