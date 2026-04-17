@@ -2,10 +2,14 @@
 import os
 import json
 import requests
+import pytz
 from pathlib import Path
+from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 load_dotenv()
 
@@ -15,18 +19,336 @@ CORS(app)
 PORT         = int(os.getenv('FLASK_PORT', 5000))
 PROMPTS_DIR  = Path('prompts')
 PROJECTS_DIR = Path('projects')
+QUEUE_DIR    = Path('queue')
 PROMPTS_DIR.mkdir(exist_ok=True)
 PROJECTS_DIR.mkdir(exist_ok=True)
+QUEUE_DIR.mkdir(exist_ok=True)
 
-# ── 정적 파일 (index.html) ──
+QUEUE_FILE = QUEUE_DIR / 'pending.json'
+KST        = pytz.timezone('Asia/Seoul')
+
+
+# ════════════════════════════════════════════
+# 큐 모듈 — queue/pending.json 읽기/쓰기
+# ════════════════════════════════════════════
+
+def load_queue() -> dict:
+    """큐 파일 로드. 없으면 빈 구조 반환."""
+    if not QUEUE_FILE.exists():
+        return {'pending': [], 'processed': []}
+    try:
+        return json.loads(QUEUE_FILE.read_text(encoding='utf-8'))
+    except (json.JSONDecodeError, IOError):
+        return {'pending': [], 'processed': []}
+
+
+def save_queue(data: dict):
+    """큐 파일 저장."""
+    QUEUE_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding='utf-8'
+    )
+
+
+def add_to_queue(issue_data: dict) -> bool:
+    """
+    이슈를 큐에 추가.
+    이미 pending 에 같은 issue_key 가 있으면 중복 무시 → False 반환.
+    """
+    queue = load_queue()
+    existing_keys = [item['issue_key'] for item in queue['pending']]
+    if issue_data['issue_key'] in existing_keys:
+        return False
+    queue['pending'].append(issue_data)
+    save_queue(queue)
+    return True
+
+
+# ════════════════════════════════════════════
+# Google Sheets 연동
+# ════════════════════════════════════════════
+
+def get_sheets_client():
+    """
+    Google Sheets 클라이언트 생성.
+    - Render.com 환경: GOOGLE_SHEETS_CREDENTIALS_JSON 환경변수 (JSON 문자열)
+    - 로컬 환경: GOOGLE_SHEETS_CREDENTIALS 파일 경로
+    gspread 미설치 또는 인증 정보 없으면 None 반환.
+    """
+    try:
+        import gspread
+    except ImportError:
+        print('[Sheets] gspread 미설치. pip install gspread 필요.')
+        return None
+
+    creds_json = os.getenv('GOOGLE_SHEETS_CREDENTIALS_JSON')
+    if creds_json:
+        # Render.com 환경: 환경변수에서 JSON 직접 로드
+        try:
+            creds_dict = json.loads(creds_json)
+            return gspread.service_account_from_dict(creds_dict)
+        except Exception as e:
+            print(f'[Sheets] 환경변수 인증 실패: {e}')
+            return None
+
+    creds_file = os.getenv('GOOGLE_SHEETS_CREDENTIALS', 'credentials/service_account.json')
+    if not Path(creds_file).exists():
+        print(f'[Sheets] 인증 파일 없음: {creds_file}')
+        return None
+
+    try:
+        return gspread.service_account(filename=creds_file)
+    except Exception as e:
+        print(f'[Sheets] 파일 인증 실패: {e}')
+        return None
+
+
+def parse_tc_to_rows(item: dict, tc_result: dict) -> list:
+    """
+    AI 생성 TC dict 를 Sheets 행 목록으로 변환.
+    projects/{project_key}.json 의 tc_types.columns 참조.
+
+    Returns: [[col1, col2, ...]] 형태의 2차원 배열
+    """
+    project_key = item.get('project_key', '')
+    proj_path   = PROJECTS_DIR / f'{project_key}.json'
+
+    # 프로젝트 설정 로드 (없으면 기본 컬럼 사용)
+    if proj_path.exists():
+        try:
+            proj = json.loads(proj_path.read_text(encoding='utf-8'))
+        except Exception:
+            proj = {}
+    else:
+        proj = {}
+
+    # 첫 번째 TC 유형의 컬럼 기준으로 변환
+    tc_types = proj.get('tc_types', [])
+    columns  = tc_types[0]['columns'] if tc_types else [
+        {'key': '관리번호'}, {'key': '요약'}, {'key': '분류'},
+        {'key': 'Precondition'}, {'key': '수행절차'},
+        {'key': '기대결과'}, {'key': '테스트결과'}, {'key': '비고'}
+    ]
+
+    tc = tc_result.get('tc', {})
+
+    # AI 응답 키 → 컬럼 키 매핑
+    key_map = {
+        '관리번호':     tc.get('관리번호', ''),
+        '요약':         tc.get('요약', ''),
+        '분류':         tc.get('분류', ''),
+        'Precondition': tc.get('Precondition', ''),
+        '수행절차':     tc.get('수행절차', ''),
+        '기대결과':     tc.get('기대결과', ''),
+        '테스트결과':   tc.get('테스트결과', ''),
+        '비고':         tc.get('비고', ''),
+        # E2E / 기본기능 전용
+        '상태':         '',
+        '시나리오목적': tc.get('요약', ''),
+        '테스트계정':   tc.get('테스트계정', ''),
+        '자동화':       '',
+        'TC ID':        tc.get('관리번호', ''),
+        '기능/요구명세ID': '',
+        'Category1':    tc.get('분류', ''),
+        'Category2':    '',
+        'Category3':    '',
+        'Title':        tc.get('요약', ''),
+        'Test Step':    tc.get('수행절차', ''),
+        'Expected Result': tc.get('기대결과', ''),
+    }
+
+    row = [key_map.get(col['key'], '') for col in columns]
+    return [row]
+
+
+def save_to_sheets(item: dict, tc_result: dict):
+    """
+    생성된 TC 를 Google Sheets 에 저장.
+    시트가 없으면 자동 생성 후 헤더 추가.
+    """
+    gc = get_sheets_client()
+    if not gc:
+        print('[Sheets] 클라이언트 없음 — 저장 건너뜀')
+        return
+
+    sheet_id = os.getenv('GOOGLE_SHEETS_ID', '')
+    if not sheet_id:
+        print('[Sheets] GOOGLE_SHEETS_ID 환경변수 없음 — 저장 건너뜀')
+        return
+
+    try:
+        import gspread
+        sh           = gc.open_by_key(sheet_id)
+        project_key  = item.get('project_key', 'default')
+
+        # 워크시트 찾기 (없으면 생성)
+        try:
+            ws = sh.worksheet(project_key)
+        except gspread.WorksheetNotFound:
+            ws = sh.add_worksheet(title=project_key, rows=1000, cols=20)
+            # 헤더 행 추가 — 프로젝트 설정의 컬럼 키 사용
+            proj_path = PROJECTS_DIR / f'{project_key}.json'
+            if proj_path.exists():
+                proj     = json.loads(proj_path.read_text(encoding='utf-8'))
+                tc_types = proj.get('tc_types', [])
+                columns  = tc_types[0]['columns'] if tc_types else []
+                headers  = [col['key'] for col in columns]
+            else:
+                headers = ['관리번호', '요약', '분류', 'Precondition',
+                           '수행절차', '기대결과', '테스트결과', '비고']
+            ws.update('A1', [headers])
+
+        # TC 행 변환 후 추가
+        rows     = parse_tc_to_rows(item, tc_result)
+        next_row = len(ws.get_all_values()) + 1
+        ws.update(f'A{next_row}', rows)
+        print(f'[Sheets] {item["issue_key"]} → {len(rows)}건 저장 완료')
+
+    except Exception as e:
+        print(f'[Sheets] 저장 실패: {e}')
+        raise
+
+
+# ════════════════════════════════════════════
+# AI TC 생성 — 스케줄러용 (서버 사이드 Key 사용)
+# ════════════════════════════════════════════
+
+def generate_tc_for_issue(item: dict) -> dict:
+    """
+    큐 항목 하나에 대해 TC 를 생성하고 파싱된 dict 반환.
+    프로젝트 설정에서 API Key, 프로바이더, 모델을 읽음.
+    SKILL.md 를 시스템 프롬프트로 사용.
+    """
+    project_key = item.get('project_key', '')
+    proj_path   = PROJECTS_DIR / f'{project_key}.json'
+
+    # 프로젝트 설정 로드
+    if proj_path.exists():
+        proj = json.loads(proj_path.read_text(encoding='utf-8'))
+    else:
+        raise Exception(f'프로젝트 설정 없음: {project_key}')
+
+    # API Key / 프로바이더 / 모델 — 프로젝트 설정 우선, 환경변수 fallback
+    api_key  = proj.get('api_key') or os.getenv('ANTHROPIC_API_KEY') or os.getenv('GEMINI_API_KEY', '')
+    provider = proj.get('ai_provider', 'gemini')
+    model    = proj.get('ai_model', '')
+
+    if not api_key:
+        raise Exception('API Key 없음 — 프로젝트 설정 또는 환경변수 확인 필요')
+
+    # SKILL.md 로드 (시스템 프롬프트)
+    skill_path = PROMPTS_DIR / f'{project_key}.md'
+    system     = skill_path.read_text(encoding='utf-8') if skill_path.exists() else ''
+
+    # 유저 메시지 구성
+    user_msg = (
+        f"JIRA 이슈 번호: {item['issue_key']}\n"
+        f"기능 설명: {item['summary']}\n"
+        f"{('상세 내용: ' + item['description'] + chr(10)) if item.get('description') else ''}"
+        f"생성 옵션: TC\n\n"
+        f"기능/증상을 분석하여 관련 트러블슈팅 패턴을 적용하고, applied_ts에 반드시 명시해주세요."
+    )
+    messages = [{'role': 'user', 'parts': [{'text': user_msg}]}]
+
+    # AI 호출 (기존 함수 재사용)
+    if provider == 'claude':
+        raw = _call_claude(api_key, model, system, messages)
+    else:
+        raw = _call_gemini(api_key, model, system, messages)
+
+    # JSON 파싱
+    return _parse_tc_result(raw)
+
+
+def _parse_tc_result(raw: str) -> dict:
+    """AI 응답 텍스트를 TC dict 로 파싱."""
+    text = raw.replace('```json', '').replace('```', '').strip()
+    s, e = text.find('{'), text.rfind('}')
+    if s >= 0 and e >= 0:
+        text = text[s:e + 1]
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # 파싱 실패 시 기본 구조 반환
+        return {
+            'tc': {
+                '관리번호': '', '요약': '[파싱 오류]',
+                '분류': '', 'Precondition': '',
+                '수행절차': '', '기대결과': '',
+                '테스트결과': '', '비고': f'원본:\n{raw[:500]}'
+            },
+            'script': None, 'applied_ts': [], 'summary': '파싱 오류'
+        }
+
+
+# ════════════════════════════════════════════
+# 스케줄러 — 매일 09:00 KST 큐 일괄 처리
+# ════════════════════════════════════════════
+
+def process_queue():
+    """
+    매일 09:00 KST 에 실행.
+    pending 항목을 순서대로 처리:
+      1. AI TC 생성
+      2. Google Sheets 저장
+      3. pending → processed 이동
+    """
+    queue   = load_queue()
+    pending = queue.get('pending', [])
+
+    if not pending:
+        print('[Scheduler] 처리할 항목 없음')
+        return
+
+    print(f'[Scheduler] {len(pending)}건 처리 시작 — {datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")}')
+
+    for item in list(pending):  # 복사본으로 순회 (순회 중 수정 방지)
+        issue_key = item.get('issue_key', '?')
+        try:
+            print(f'  → {issue_key} TC 생성 중...')
+            tc_result = generate_tc_for_issue(item)
+
+            print(f'  → {issue_key} Sheets 저장 중...')
+            save_to_sheets(item, tc_result)
+
+            # processed 로 이동
+            item['processed_at'] = datetime.now(KST).isoformat()
+            item['status']       = 'completed'
+            item['result']       = 'success'
+            queue['pending'].remove(item)
+            queue['processed'].append(item)
+            print(f'  ✓ {issue_key} 완료')
+
+        except Exception as e:
+            print(f'  ✗ {issue_key} 실패: {e}')
+            item['status'] = 'failed'
+            item['result'] = str(e)
+
+    save_queue(queue)
+    print(f'[Scheduler] 처리 완료 — {datetime.now(KST).strftime("%H:%M:%S")}')
+
+
+# 스케줄러 인스턴스 생성 및 시작
+scheduler = BackgroundScheduler(timezone=KST)
+scheduler.add_job(
+    process_queue,
+    CronTrigger(hour=9, minute=0, timezone=KST),
+    id='daily_queue_process',
+    replace_existing=True
+)
+scheduler.start()
+print('[Scheduler] 시작됨 — 매일 09:00 KST 실행 예정')
+
+
+# ════════════════════════════════════════════
+# 기존 엔드포인트 (수정 없음)
+# ════════════════════════════════════════════
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
 
 
-# ────────────────────────────────────────────
-# /api/skill  — SKILL.md 읽기 / 쓰기
-# ────────────────────────────────────────────
 @app.route('/api/skill/<project_id>', methods=['GET'])
 def get_skill(project_id):
     path = PROMPTS_DIR / f'{project_id}.md'
@@ -38,17 +360,14 @@ def get_skill(project_id):
 @app.route('/api/skill/<project_id>', methods=['POST'])
 def save_skill(project_id):
     content = request.json.get('content', '')
-    path = PROMPTS_DIR / f'{project_id}.md'
+    path    = PROMPTS_DIR / f'{project_id}.md'
     path.write_text(content, encoding='utf-8')
     return jsonify({'ok': True}), 200
 
 
-# ────────────────────────────────────────────
-# /api/project  — 프로젝트 설정 읽기 / 쓰기 / 목록
-# ────────────────────────────────────────────
 @app.route('/api/project', methods=['GET'])
 def list_projects():
-    files = PROJECTS_DIR.glob('*.json')
+    files    = PROJECTS_DIR.glob('*.json')
     projects = []
     for f in files:
         try:
@@ -64,13 +383,23 @@ def get_project(project_id):
     path = PROJECTS_DIR / f'{project_id}.json'
     if not path.exists():
         return jsonify({'error': '프로젝트를 찾을 수 없습니다.'}), 404
-    return jsonify(json.loads(path.read_text(encoding='utf-8'))), 200
+    data = json.loads(path.read_text(encoding='utf-8'))
+    # 보안: API Key 는 프론트엔드로 반환하지 않음
+    data.pop('api_key', None)
+    return jsonify(data), 200
 
 
 @app.route('/api/project/<project_id>', methods=['POST'])
 def save_project(project_id):
-    data = request.json
-    path = PROJECTS_DIR / f'{project_id}.json'
+    data      = request.json
+    path      = PROJECTS_DIR / f'{project_id}.json'
+    # 기존 파일의 api_key 유지 (프론트엔드에서 전송하지 않으므로 덮어쓰지 않음)
+    if path.exists():
+        existing = json.loads(path.read_text(encoding='utf-8'))
+        if 'api_key' in existing and 'api_key' not in data:
+            data['api_key']    = existing['api_key']
+            data['ai_provider'] = existing.get('ai_provider', data.get('ai_provider', 'gemini'))
+            data['ai_model']   = existing.get('ai_model', data.get('ai_model', ''))
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return jsonify({'ok': True}), 200
 
@@ -86,9 +415,6 @@ def delete_project(project_id):
     return jsonify({'ok': True}), 200
 
 
-# ────────────────────────────────────────────
-# /api/jira  — JIRA API 중계 (CORS 우회)
-# ────────────────────────────────────────────
 @app.route('/api/jira/<path:jira_path>', methods=['GET'])
 def jira_proxy(jira_path):
     domain = request.args.get('domain', '')
@@ -98,30 +424,26 @@ def jira_proxy(jira_path):
     if not all([domain, email, token]):
         return jsonify({'error': 'domain, email, token 파라미터가 필요합니다.'}), 400
 
-    url = f'https://{domain}/{jira_path}'
+    url    = f'https://{domain}/{jira_path}'
     params = {k: v for k, v in request.args.items() if k not in ('domain', 'email', 'token')}
 
     try:
         res = requests.get(
-            url,
-            params=params,
+            url, params=params,
             auth=(email, token),
             headers={'Accept': 'application/json'},
             timeout=15,
-            verify=False  # 사내 SSL 인증서 문제 대응
+            verify=False
         )
         return jsonify(res.json()), res.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({'error': str(e)}), 502
 
 
-# ────────────────────────────────────────────
-# /api/generate  — AI API 중계 (Claude / Gemini)
-# ────────────────────────────────────────────
 @app.route('/api/generate', methods=['POST'])
 def generate():
     body     = request.json
-    provider = body.get('provider', 'gemini')   # 'gemini' or 'claude'
+    provider = body.get('provider', 'gemini')
     api_key  = body.get('api_key', '')
     messages = body.get('messages', [])
     system   = body.get('system', '')
@@ -141,7 +463,7 @@ def generate():
 
 
 def _call_gemini(api_key, model, system, messages):
-    model = model or 'gemini-2.0-flash'
+    model = model or 'gemini-2.5-flash'
     url   = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
     body  = {
         'system_instruction': {'parts': [{'text': system}]},
@@ -157,13 +479,12 @@ def _call_gemini(api_key, model, system, messages):
 
 def _call_claude(api_key, model, system, messages):
     model = model or 'claude-sonnet-4-20250514'
-    # Gemini 형식 → Claude 형식 변환
     claude_messages = [
         {'role': m['role'].replace('model', 'assistant'),
          'content': m['parts'][0]['text']}
         for m in messages
     ]
-    res  = requests.post(
+    res = requests.post(
         'https://api.anthropic.com/v1/messages',
         headers={
             'x-api-key': api_key,
@@ -185,8 +506,140 @@ def _call_claude(api_key, model, system, messages):
     return data['content'][0]['text'].strip()
 
 
-# ────────────────────────────────────────────
+# ════════════════════════════════════════════
+# Phase 2 신규 엔드포인트
+# ════════════════════════════════════════════
+
+@app.route('/api/webhook', methods=['POST'])
+def webhook():
+    """
+    JIRA Automation 에서 보내는 Webhook 수신.
+    담당자 변경 이벤트인 경우에만 큐에 저장.
+    """
+    try:
+        body = request.get_json(force=True)
+    except Exception:
+        return jsonify({'error': '잘못된 JSON'}), 400
+
+    if not body:
+        return jsonify({'error': 'body 없음'}), 400
+
+    # changelog 에서 assignee 변경 여부 확인
+    changelog = body.get('changelog', {})
+    items     = changelog.get('items', [])
+    assignee_changed = any(i.get('field') == 'assignee' for i in items)
+
+    if not assignee_changed:
+        return jsonify({'status': 'ignored', 'reason': 'assignee 변경 아님'}), 200
+
+    # 이슈 정보 추출
+    issue  = body.get('issue', {})
+    fields = issue.get('fields', {})
+
+    issue_key   = issue.get('key', '')
+    summary     = fields.get('summary', '')
+    description = fields.get('description', '') or ''
+    project_key = fields.get('project', {}).get('key', '').lower()
+
+    if not issue_key:
+        return jsonify({'error': 'issue key 없음'}), 400
+
+    # description 이 ADF(dict) 형식인 경우 텍스트만 추출
+    if isinstance(description, dict):
+        description = _extract_text_from_adf(description)
+
+    issue_data = {
+        'issue_key':   issue_key,
+        'summary':     summary,
+        'description': description[:2000],  # 토큰 절약: 2000자 제한
+        'project_key': project_key or 'default',
+        'queued_at':   datetime.now(KST).isoformat(),
+        'status':      'pending'
+    }
+
+    added = add_to_queue(issue_data)
+    if not added:
+        return jsonify({'status': 'duplicate', 'issue_key': issue_key}), 200
+
+    print(f'[Webhook] {issue_key} 큐 추가됨 — {summary[:50]}')
+    return jsonify({'status': 'queued', 'issue_key': issue_key}), 200
+
+
+def _extract_text_from_adf(node, depth=0) -> str:
+    """JIRA ADF(Atlassian Document Format) → 평문 텍스트 변환."""
+    if depth > 10:
+        return ''
+    if isinstance(node, str):
+        return node
+    if not isinstance(node, dict):
+        return ''
+    node_type = node.get('type', '')
+    text      = node.get('text', '')
+    children  = node.get('content', [])
+    result    = text + ''.join(_extract_text_from_adf(c, depth + 1) for c in children)
+    if node_type in ('paragraph', 'heading', 'listItem'):
+        result += '\n'
+    return result
+
+
+@app.route('/api/webhook/queue', methods=['GET'])
+def get_queue():
+    """현재 큐 상태 조회 (디버깅용)."""
+    queue = load_queue()
+    return jsonify({
+        'pending_count':   len(queue.get('pending', [])),
+        'processed_count': len(queue.get('processed', [])),
+        'pending':         queue.get('pending', []),
+        'processed':       queue.get('processed', [])[-10:]  # 최근 10건만
+    }), 200
+
+
+@app.route('/api/process-queue', methods=['POST'])
+def manual_process():
+    """
+    수동 큐 처리 트리거.
+    스케줄러가 슬립으로 미실행 시 대안.
+    """
+    try:
+        process_queue()
+        queue = load_queue()
+        return jsonify({
+            'status':          'ok',
+            'pending_count':   len(queue.get('pending', [])),
+            'processed_count': len(queue.get('processed', []))
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/project/<project_id>/apikey', methods=['POST'])
+def save_project_apikey(project_id):
+    """
+    프로젝트별 AI API Key 저장 (별도 엔드포인트로 분리).
+    GET /api/project/{id} 에서는 반환하지 않으므로 보안 유지.
+    """
+    path = PROJECTS_DIR / f'{project_id}.json'
+    if not path.exists():
+        return jsonify({'error': '프로젝트를 찾을 수 없습니다.'}), 404
+
+    body     = request.json
+    api_key  = body.get('api_key', '').strip()
+    provider = body.get('ai_provider', 'gemini')
+    model    = body.get('ai_model', '')
+
+    if not api_key:
+        return jsonify({'error': 'api_key 없음'}), 400
+
+    data = json.loads(path.read_text(encoding='utf-8'))
+    data['api_key']    = api_key
+    data['ai_provider'] = provider
+    data['ai_model']   = model
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    return jsonify({'ok': True}), 200
+
+
+# ════════════════════════════════════════════
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

@@ -1,5 +1,8 @@
 flask
 flask-cors
-python-dotenv
 requests
+python-dotenv
 waitress
+APScheduler
+gspread
+pytz

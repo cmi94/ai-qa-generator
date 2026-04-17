@@ -1,0 +1,35 @@
+{
+  "pending": [],
+  "processed": [
+    {
+      "issue_key": "LIMS-9999",
+      "summary": "??? ??",
+      "description": "",
+      "project_key": "lims",
+      "queued_at": "2026-04-17T09:11:28.144849+09:00",
+      "status": "completed",
+      "processed_at": "2026-04-17T09:18:42.318743+09:00",
+      "result": "success"
+    },
+    {
+      "issue_key": "LIMS-0001",
+      "summary": "[????] ??? ??",
+      "description": "",
+      "project_key": "lims",
+      "queued_at": "2026-04-17T09:42:05.821664+09:00",
+      "status": "completed",
+      "processed_at": "2026-04-17T09:42:38.931283+09:00",
+      "result": "success"
+    },
+    {
+      "issue_key": "LIMS-0002",
+      "summary": "[????] ??? ??2",
+      "description": "",
+      "project_key": "lims",
+      "queued_at": "2026-04-17T09:44:26.640077+09:00",
+      "status": "completed",
+      "processed_at": "2026-04-17T09:44:49.245101+09:00",
+      "result": "success"
+    }
+  ]
+}
