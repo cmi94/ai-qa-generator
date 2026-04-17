@@ -1,6 +1,8 @@
 # app.py
 import os
 import json
+import shutil
+import subprocess
 import requests
 import pytz
 from pathlib import Path
@@ -216,48 +218,77 @@ def save_to_sheets(item: dict, tc_result: dict):
 def generate_tc_for_issue(item: dict) -> dict:
     """
     큐 항목 하나에 대해 TC 를 생성하고 파싱된 dict 반환.
-    프로젝트 설정에서 API Key, 프로바이더, 모델을 읽음.
-    SKILL.md 를 시스템 프롬프트로 사용.
+    Claude Code CLI (claude --print) 를 subprocess 로 호출.
+    API Key 불필요 — Claude.ai 구독으로 동작.
     """
     project_key = item.get('project_key', '')
     proj_path   = PROJECTS_DIR / f'{project_key}.json'
 
-    # 프로젝트 설정 로드
-    if proj_path.exists():
-        proj = json.loads(proj_path.read_text(encoding='utf-8'))
-    else:
+    if not proj_path.exists():
         raise Exception(f'프로젝트 설정 없음: {project_key}')
 
-    # API Key / 프로바이더 / 모델 — 프로젝트 설정 우선, 환경변수 fallback
-    api_key  = proj.get('api_key') or os.getenv('ANTHROPIC_API_KEY') or os.getenv('GEMINI_API_KEY', '')
-    provider = proj.get('ai_provider', 'gemini')
-    model    = proj.get('ai_model', '')
+    # SKILL.md 로드 — 프롬프트에 포함하여 규칙 전달
+    skill_path    = PROMPTS_DIR / f'{project_key}.md'
+    skill_content = skill_path.read_text(encoding='utf-8') if skill_path.exists() else ''
 
-    if not api_key:
-        raise Exception('API Key 없음 — 프로젝트 설정 또는 환경변수 확인 필요')
-
-    # SKILL.md 로드 (시스템 프롬프트)
-    skill_path = PROMPTS_DIR / f'{project_key}.md'
-    system     = skill_path.read_text(encoding='utf-8') if skill_path.exists() else ''
-
-    # 유저 메시지 구성
-    user_msg = (
+    # 프롬프트 구성 — JSON 출력 명시 요청
+    prompt = (
+        f"{skill_content}\n\n"
+        f"---\n\n"
         f"JIRA 이슈 번호: {item['issue_key']}\n"
         f"기능 설명: {item['summary']}\n"
         f"{('상세 내용: ' + item['description'] + chr(10)) if item.get('description') else ''}"
-        f"생성 옵션: TC\n\n"
-        f"기능/증상을 분석하여 관련 트러블슈팅 패턴을 적용하고, applied_ts에 반드시 명시해주세요."
+        f"\nTC를 생성하고 반드시 아래 JSON 형식으로만 출력해줘. 마크다운 코드블록 없이 JSON만.\n\n"
+        f'{{"tc": {{"관리번호": "", "요약": "", "분류": "", "Precondition": "", '
+        f'"수행절차": "", "기대결과": "", "테스트결과": "", "비고": ""}}, '
+        f'"applied_ts": [], "summary": ""}}'
     )
-    messages = [{'role': 'user', 'parts': [{'text': user_msg}]}]
 
-    # AI 호출 (기존 함수 재사용)
-    if provider == 'claude':
-        raw = _call_claude(api_key, model, system, messages)
-    else:
-        raw = _call_gemini(api_key, model, system, messages)
+    # claude 실행 파일 경로 — Windows: claude.cmd, Linux/Mac: claude
+    claude_bin = shutil.which('claude') or 'claude'
 
-    # JSON 파싱
-    return _parse_tc_result(raw)
+    # Windows 에서 .cmd 파일은 다중행 인수를 잘라냄 → 임시 파일 + PowerShell 파이프로 우회
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(
+        mode='w', encoding='utf-8', suffix='.txt', delete=False
+    )
+    try:
+        tmp.write(prompt)
+        tmp.close()
+
+        if os.name == 'nt':
+            # PowerShell: 파일을 읽어 claude --print 에 파이프
+            ps_cmd = f'Get-Content -Path "{tmp.name}" -Raw | & "{claude_bin}" --print'
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                cwd=str(Path(__file__).parent),
+                timeout=180
+            )
+        else:
+            # Linux/Mac: stdin 직접 파이프
+            with open(tmp.name, 'r', encoding='utf-8') as stdin_f:
+                result = subprocess.run(
+                    [claude_bin, '--print'],
+                    stdin=stdin_f,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    cwd=str(Path(__file__).parent),
+                    timeout=180
+                )
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+    if result.returncode != 0:
+        raise Exception(f'claude CLI 오류: {result.stderr[:500]}')
+
+    return _parse_tc_result(result.stdout)
 
 
 def _parse_tc_result(raw: str) -> dict:
@@ -337,7 +368,7 @@ scheduler.add_job(
     replace_existing=True
 )
 scheduler.start()
-print('[Scheduler] 시작됨 — 매일 09:00 KST 실행 예정')
+print('[Scheduler] 시작됨 - 매일 09:00 KST 실행 예정')
 
 
 # ════════════════════════════════════════════
@@ -610,6 +641,40 @@ def manual_process():
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/webhook/queue/complete', methods=['POST'])
+def complete_queue_item():
+    """
+    로컬 폴러가 TC 생성 완료 후 큐 항목을 processed 로 이동.
+    Body: {"issue_key": "LIMS-xxxx", "result": "success" | "failed", "error": "..."}
+    """
+    body      = request.get_json(force=True) or {}
+    issue_key = body.get('issue_key', '')
+    result    = body.get('result', 'success')
+    error_msg = body.get('error', '')
+
+    if not issue_key:
+        return jsonify({'error': 'issue_key 없음'}), 400
+
+    queue = load_queue()
+    item  = next((i for i in queue['pending'] if i['issue_key'] == issue_key), None)
+
+    if not item:
+        return jsonify({'error': '큐에 해당 이슈 없음'}), 404
+
+    item['processed_at'] = datetime.now(KST).isoformat()
+    item['status']       = 'completed'
+    item['result']       = result
+    if error_msg:
+        item['error'] = error_msg
+
+    queue['pending'].remove(item)
+    queue['processed'].append(item)
+    save_queue(queue)
+
+    print(f'[Queue] {issue_key} 처리 완료 표시 — {result}')
+    return jsonify({'ok': True}), 200
 
 
 @app.route('/api/project/<project_id>/apikey', methods=['POST'])
