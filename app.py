@@ -545,7 +545,7 @@ def _call_claude(api_key, model, system, messages):
 def webhook():
     """
     JIRA Automation 에서 보내는 Webhook 수신.
-    담당자 변경 이벤트인 경우에만 큐에 저장.
+    상태가 '테스트 진행'으로 변경되거나 담당자가 변경된 경우 큐에 저장.
     """
     try:
         body = request.get_json(force=True)
@@ -555,13 +555,20 @@ def webhook():
     if not body:
         return jsonify({'error': 'body 없음'}), 400
 
-    # changelog 에서 assignee 변경 여부 확인
+    # changelog 에서 트리거 조건 확인
+    # - 상태가 '테스트 진행'으로 변경된 경우
+    # - 또는 담당자 변경된 경우 (하위 호환)
     changelog = body.get('changelog', {})
     items     = changelog.get('items', [])
+
+    status_to_test = any(
+        i.get('field') == 'status' and i.get('toString') == '테스트 진행'
+        for i in items
+    )
     assignee_changed = any(i.get('field') == 'assignee' for i in items)
 
-    if not assignee_changed:
-        return jsonify({'status': 'ignored', 'reason': 'assignee 변경 아님'}), 200
+    if not status_to_test and not assignee_changed:
+        return jsonify({'status': 'ignored', 'reason': '트리거 조건 미충족'}), 200
 
     # 이슈 정보 추출
     issue  = body.get('issue', {})
