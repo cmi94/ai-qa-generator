@@ -238,7 +238,7 @@ def generate_tc_for_issue(item: dict) -> dict:
         f"JIRA 이슈 번호: {item['issue_key']}\n"
         f"기능 설명: {item['summary']}\n"
         f"{('상세 내용: ' + item['description'] + chr(10)) if item.get('description') else ''}"
-        f"\nTC를 생성하고 반드시 아래 JSON 형식으로만 출력해줘. 마크다운 코드블록 없이 JSON만.\n\n"
+        f"\n정보가 부족하더라도 주어진 요약과 이슈 번호만으로 TC를 작성해줘. 추가 정보를 요청하거나 확인을 묻지 말고 즉시 아래 JSON 형식으로만 출력해줘. 마크다운 코드블록 없이 JSON만.\n\n"
         f'{{"tc": {{"관리번호": "", "요약": "", "분류": "", "Precondition": "", '
         f'"수행절차": "", "기대결과": "", "테스트결과": "", "비고": ""}}, '
         f'"applied_ts": [], "summary": ""}}'
