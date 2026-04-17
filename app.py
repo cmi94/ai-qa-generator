@@ -259,6 +259,7 @@ def generate_tc_for_issue(item: dict) -> dict:
         if os.name == 'nt':
             # PowerShell: 파일을 읽어 claude --print 에 파이프
             # --dangerously-skip-permissions: MCP 도구 권한 프롬프트 없이 실행
+            # .claude/settings.json 에서 mcpServers 비활성화로 MCP 도구 차단
             ps_cmd = f'Get-Content -Path "{tmp.name}" -Raw | & "{claude_bin}" --print --dangerously-skip-permissions'
             result = subprocess.run(
                 ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
