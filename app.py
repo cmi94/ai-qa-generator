@@ -196,12 +196,12 @@ def save_to_sheets(item: dict, tc_result: dict):
             else:
                 headers = ['관리번호', '요약', '분류', 'Precondition',
                            '수행절차', '기대결과', '테스트결과', '비고']
-            ws.update('A1', [headers])
+            ws.update([headers], 'A1')
 
         # TC 행 변환 후 추가
         rows     = parse_tc_to_rows(item, tc_result)
         next_row = len(ws.get_all_values()) + 1
-        ws.update(f'A{next_row}', rows)
+        ws.update(rows, f'A{next_row}')
         print(f'[Sheets] {item["issue_key"]} → {len(rows)}건 저장 완료')
 
     except Exception as e:
