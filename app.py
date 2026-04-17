@@ -561,6 +561,9 @@ def webhook():
     changelog = body.get('changelog', {})
     items     = changelog.get('items', [])
 
+    # 디버깅: changelog items 전체 출력
+    print(f'[Webhook] changelog items: {items}')
+
     status_to_test = any(
         i.get('field') == 'status' and i.get('toString') == '테스트 진행'
         for i in items
@@ -568,6 +571,7 @@ def webhook():
     assignee_changed = any(i.get('field') == 'assignee' for i in items)
 
     if not status_to_test and not assignee_changed:
+        print(f'[Webhook] ignored — status items: {[i for i in items if i.get("field") == "status"]}')
         return jsonify({'status': 'ignored', 'reason': '트리거 조건 미충족'}), 200
 
     # 이슈 정보 추출
