@@ -1,0 +1,152 @@
+{
+  "categories": [
+    "LES",
+    "시험",
+    "기기",
+    "재고",
+    "Config",
+    "기준정보",
+    "시험계획",
+    "조회",
+    "출하",
+    "결재",
+    "Lims"
+  ],
+  "jira_domain": "polaqube.atlassian.net",
+  "name": "LIMSpro",
+  "tc_types": [
+    {
+      "columns": [
+        {
+          "key": "관리번호",
+          "tsv_wrap": false
+        },
+        {
+          "key": "요약",
+          "tsv_wrap": false
+        },
+        {
+          "key": "분류",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Precondition",
+          "tsv_wrap": true
+        },
+        {
+          "key": "수행절차",
+          "tsv_wrap": true
+        },
+        {
+          "key": "기대결과",
+          "tsv_wrap": true
+        },
+        {
+          "key": "테스트결과",
+          "tsv_wrap": false
+        },
+        {
+          "key": "비고",
+          "tsv_wrap": false
+        }
+      ],
+      "id": "deploy",
+      "name": "정기배포"
+    },
+    {
+      "columns": [
+        {
+          "key": "자동화",
+          "tsv_wrap": false
+        },
+        {
+          "key": "TC ID",
+          "tsv_wrap": false
+        },
+        {
+          "key": "기능/요구명세ID",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Category1",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Category2",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Category3",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Title",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Precondition",
+          "tsv_wrap": true
+        },
+        {
+          "key": "Test Step",
+          "tsv_wrap": true
+        },
+        {
+          "key": "Expected Result",
+          "tsv_wrap": true
+        },
+        {
+          "key": "테스트결과",
+          "tsv_wrap": false
+        }
+      ],
+      "id": "basic",
+      "name": "기본기능"
+    },
+    {
+      "columns": [
+        {
+          "key": "상태",
+          "tsv_wrap": false
+        },
+        {
+          "key": "관리번호",
+          "tsv_wrap": false
+        },
+        {
+          "key": "시나리오목적",
+          "tsv_wrap": false
+        },
+        {
+          "key": "테스트계정",
+          "tsv_wrap": false
+        },
+        {
+          "key": "Precondition",
+          "tsv_wrap": true
+        },
+        {
+          "key": "수행절차",
+          "tsv_wrap": true
+        },
+        {
+          "key": "기대결과",
+          "tsv_wrap": true
+        },
+        {
+          "key": "테스트결과",
+          "tsv_wrap": false
+        },
+        {
+          "key": "비고",
+          "tsv_wrap": false
+        }
+      ],
+      "id": "e2e",
+      "name": "E2E"
+    }
+  ],
+  "api_key": "AIzaSyBj8UvKIIjkzp6W7ZIXXa4aVuWUmIiFBgA",
+  "ai_provider": "gemini",
+  "ai_model": "gemini-2.5-flash"
+}

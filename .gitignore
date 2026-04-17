@@ -3,8 +3,10 @@ __pycache__/
 *.pyc
 prompts/*.md
 projects/*.json
+!prompts/lims.md
+!projects/lims.json
 !prompts/example.md
 !projects/example.json
 jira_config.json
-
 credentials/
+queue/
