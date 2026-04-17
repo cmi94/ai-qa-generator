@@ -258,7 +258,8 @@ def generate_tc_for_issue(item: dict) -> dict:
 
         if os.name == 'nt':
             # PowerShell: 파일을 읽어 claude --print 에 파이프
-            ps_cmd = f'Get-Content -Path "{tmp.name}" -Raw | & "{claude_bin}" --print'
+            # --dangerously-skip-permissions: MCP 도구 권한 프롬프트 없이 실행
+            ps_cmd = f'Get-Content -Path "{tmp.name}" -Raw | & "{claude_bin}" --print --dangerously-skip-permissions'
             result = subprocess.run(
                 ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
                 capture_output=True,
@@ -271,7 +272,7 @@ def generate_tc_for_issue(item: dict) -> dict:
             # Linux/Mac: stdin 직접 파이프
             with open(tmp.name, 'r', encoding='utf-8') as stdin_f:
                 result = subprocess.run(
-                    [claude_bin, '--print'],
+                    [claude_bin, '--print', '--dangerously-skip-permissions'],
                     stdin=stdin_f,
                     capture_output=True,
                     text=True,
