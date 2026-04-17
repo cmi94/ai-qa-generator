@@ -561,18 +561,8 @@ def webhook():
     changelog = body.get('changelog', {})
     items     = changelog.get('items', [])
 
-    # 디버깅: changelog items 전체 출력
-    print(f'[Webhook] changelog items: {items}')
-
-    status_to_test = any(
-        i.get('field') == 'status' and i.get('toString') == '테스트 진행'
-        for i in items
-    )
-    assignee_changed = any(i.get('field') == 'assignee' for i in items)
-
-    if not status_to_test and not assignee_changed:
-        print(f'[Webhook] ignored — status items: {[i for i in items if i.get("field") == "status"]}')
-        return jsonify({'status': 'ignored', 'reason': '트리거 조건 미충족'}), 200
+    # JIRA Automation 에서 이미 트리거 조건("테스트 진행" 상태 변경)을 적용하므로
+    # Flask 에서는 별도 조건 검증 없이 issue key 유무만 확인
 
     # 이슈 정보 추출
     issue  = body.get('issue', {})
