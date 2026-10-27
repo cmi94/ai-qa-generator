@@ -146,7 +146,6 @@
       "name": "E2E"
     }
   ],
-  "api_key": "AIzaSyBj8UvKIIjkzp6W7ZIXXa4aVuWUmIiFBgA",
   "ai_provider": "gemini",
   "ai_model": "gemini-2.5-flash"
 }

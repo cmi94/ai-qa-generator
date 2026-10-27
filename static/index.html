@@ -1631,7 +1631,7 @@ li순서: 1=조회, 2=시험, 3=시험계획, 4=재고, 5=기기, 6=출하COA, 7
             const model = getAIModel();
             const system = getFullPrompt();
 
-            if (!api_key) throw new Error('API Key가 설정되지 않았습니다.');
+            // An empty browser key uses the server environment credential.
 
             const res = await fetch('/api/generate', {
                 method: 'POST',

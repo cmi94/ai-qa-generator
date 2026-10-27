@@ -426,13 +426,8 @@ def get_project(project_id):
 def save_project(project_id):
     data      = request.json
     path      = PROJECTS_DIR / f'{project_id}.json'
-    # 기존 파일의 api_key 유지 (프론트엔드에서 전송하지 않으므로 덮어쓰지 않음)
-    if path.exists():
-        existing = json.loads(path.read_text(encoding='utf-8'))
-        if 'api_key' in existing and 'api_key' not in data:
-            data['api_key']    = existing['api_key']
-            data['ai_provider'] = existing.get('ai_provider', data.get('ai_provider', 'gemini'))
-            data['ai_model']   = existing.get('ai_model', data.get('ai_model', ''))
+    # Credentials must never be persisted in project JSON.
+    data.pop('api_key', None)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return jsonify({'ok': True}), 200
 
@@ -477,7 +472,10 @@ def jira_proxy(jira_path):
 def generate():
     body     = request.json
     provider = body.get('provider', 'gemini')
-    api_key  = body.get('api_key', '')
+    api_key  = body.get('api_key', '').strip() or (
+        os.getenv('ANTHROPIC_API_KEY', '') if provider == 'claude' else
+        (os.getenv('GEMINI_API_KEY', '') or os.getenv('GOOGLE_API_KEY', ''))
+    )
     messages = body.get('messages', [])
     system   = body.get('system', '')
     model    = body.get('model', '')
@@ -497,13 +495,13 @@ def generate():
 
 def _call_gemini(api_key, model, system, messages):
     model = model or 'gemini-2.5-flash'
-    url   = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+    url   = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
     body  = {
         'system_instruction': {'parts': [{'text': system}]},
         'contents': messages,
         'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 16384}
     }
-    res  = requests.post(url, json=body, timeout=60)
+    res  = requests.post(url, json=body, headers={'x-goog-api-key': api_key}, timeout=60)
     data = res.json()
     if not res.ok:
         raise Exception(data.get('error', {}).get('message', f'Gemini 오류 ({res.status_code})'))
@@ -682,29 +680,7 @@ def complete_queue_item():
 
 @app.route('/api/project/<project_id>/apikey', methods=['POST'])
 def save_project_apikey(project_id):
-    """
-    프로젝트별 AI API Key 저장 (별도 엔드포인트로 분리).
-    GET /api/project/{id} 에서는 반환하지 않으므로 보안 유지.
-    """
-    path = PROJECTS_DIR / f'{project_id}.json'
-    if not path.exists():
-        return jsonify({'error': '프로젝트를 찾을 수 없습니다.'}), 404
-
-    body     = request.json
-    api_key  = body.get('api_key', '').strip()
-    provider = body.get('ai_provider', 'gemini')
-    model    = body.get('ai_model', '')
-
-    if not api_key:
-        return jsonify({'error': 'api_key 없음'}), 400
-
-    data = json.loads(path.read_text(encoding='utf-8'))
-    data['api_key']    = api_key
-    data['ai_provider'] = provider
-    data['ai_model']   = model
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-
-    return jsonify({'ok': True}), 200
+    return jsonify({'error': 'API keys cannot be saved to project files. Configure GEMINI_API_KEY, GOOGLE_API_KEY or ANTHROPIC_API_KEY in the server environment.'}), 410
 
 
 # ════════════════════════════════════════════

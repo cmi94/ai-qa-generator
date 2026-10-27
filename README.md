@@ -94,3 +94,14 @@ http://localhost:5000
 ## License
 
 MIT
+
+## API 키 보관과 유출 대응
+
+서버 실행 환경에 `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY`를 설정합니다.
+Claude는 `ANTHROPIC_API_KEY`를 사용합니다. Render에서는 서비스의 Environment에 설정합니다.
+브라우저의 API Key 입력을 비우면 서버 환경 변수를 사용합니다.
+키를 프로젝트 JSON이나 Git에 저장하지 마세요. 프로젝트 API는 `api_key`를 저장하지 않으며,
+기존 `/api/project/<id>/apikey` 저장 경로는 HTTP 410을 반환합니다.
+
+기존에 공개된 키는 Google AI Studio에서 폐기하고, 필요할 때 새 키를 환경 변수에 설정해야 합니다.
+사용량과 청구 내역을 확인하세요. 이 수정은 과거 Git 커밋의 키를 제거하거나 키를 폐기하지 않습니다.
